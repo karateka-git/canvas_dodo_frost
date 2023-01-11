@@ -1,10 +1,13 @@
 package com.example.canvasdodofrost
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.*
 import android.util.AttributeSet
+import android.view.MotionEvent
 import android.view.View
 import androidx.core.content.ContextCompat
+import kotlin.math.abs
 
 /*
  @JvmOverloads - генерирует несколько видов констркуторов
@@ -15,13 +18,32 @@ class RimeCustomView @JvmOverloads constructor(
     defStyleAttr: Int = 0
 ) : View(context, attrs, defStyleAttr) {
 
+    init {
+        // интересный флаг, отключающий аппаратное ускорение (не совсем понимаю, как и зачем)
+        setLayerType(LAYER_TYPE_HARDWARE, null)
+    }
+
     private lateinit var backgroundSnow: Bitmap
     private lateinit var snow: Bitmap
     private lateinit var scratchBitmap: Bitmap
     private lateinit var scratchCanvas: Canvas
 
+    private var mLastTouchX = 0f
+    private var mLastTouchY = 0f
+
     private val paint by lazy {
         Paint()
+    }
+    private val innerPaintForDrawing by lazy {
+        Paint().apply {
+            style = Paint.Style.STROKE
+            strokeJoin = Paint.Join.ROUND
+            strokeCap = Paint.Cap.ROUND
+            strokeWidth = 50f
+        }
+    }
+    private val path by lazy {
+        Path()
     }
 
     // про разные модификаторы при наложении изображений -
@@ -61,5 +83,41 @@ class RimeCustomView @JvmOverloads constructor(
 
         paint.xfermode = dstOutPorterDuffMode
         canvas.drawBitmap(scratchBitmap, 0f, 0f, paint)
+    }
+
+    @SuppressLint("ClickableViewAccessibility")
+    override fun onTouchEvent(event: MotionEvent): Boolean {
+        val currentTouchX = event.x
+        val currentTouchY = event.y
+
+        when (event.action) {
+            MotionEvent.ACTION_DOWN -> {
+                path.reset()
+                path.moveTo(currentTouchX, currentTouchY)
+            }
+
+            MotionEvent.ACTION_UP -> {
+                path.lineTo(currentTouchX, currentTouchY)
+            }
+
+            // рисуем квадратичную кривую Безье, если палец прошёл более 4 пикселей в одну из сторон (значение получено опытным путём), для того чтобы был эффект закругления.
+            MotionEvent.ACTION_MOVE -> {
+                val dx = abs(currentTouchX - mLastTouchX)
+                val dy = abs(currentTouchY - mLastTouchY)
+                if (dx >= 4 || dy >= 4) {
+                    val x1 = mLastTouchX
+                    val y1 = mLastTouchY
+                    val x2 = (currentTouchX + mLastTouchX) / 2
+                    val y2 = (currentTouchY + mLastTouchY) / 2
+                    path.quadTo(x1, y1, x2, y2)
+                }
+            }
+        }
+
+        scratchCanvas.drawPath(path, innerPaintForDrawing)
+        mLastTouchX = currentTouchX
+        mLastTouchY = currentTouchY
+        invalidate()
+        return true
     }
 }
